@@ -1,5 +1,14 @@
 -- https://github.com/rxi/log.lua
 
+--
+-- log.lua
+--
+-- Copyright (c) 2016 rxi
+--
+-- This library is free software; you can redistribute it and/or modify it
+-- under the terms of the MIT license. See LICENSE for details.
+--
+
 local log = { _version = "0.1.0" }
 
 log.usecolor = true

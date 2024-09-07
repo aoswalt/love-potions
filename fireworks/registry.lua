@@ -12,7 +12,7 @@ end
 
 ---@param ent Entity
 function Registry.lookup(ent)
-  return Registry.lookup_by_key(ent.__type__)
+  return Registry.lookup_by_key(ent.__entity__)
 end
 
 function Registry.lookup_by_key(key)

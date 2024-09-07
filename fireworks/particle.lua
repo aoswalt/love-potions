@@ -23,8 +23,8 @@ function Particle.new(opts)
 
   ---@type Particle
   return {
-    __type__ = Particle.type(),
-    pos = Vector.clone(opts.pos),
+    __entity__ = Particle.type(),
+    pos = opts.pos:clone(),
     facing = Vector.clone(opts.facing or Vector.zero()),
     speed = opts.speed or 0,
     lifetime = opts.lifetime or 2,
@@ -46,8 +46,7 @@ function Particle.update(particle, dt)
     return
   end
 
-  particle.pos.x = particle.pos.x + particle.facing.x * particle.speed * dt
-  particle.pos.y = particle.pos.y + particle.facing.y * particle.speed * dt
+  particle.pos = particle.pos + particle.facing * particle.speed * dt
 end
 
 ---draw the particle

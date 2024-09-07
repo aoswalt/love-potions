@@ -31,18 +31,13 @@ function Rocket.new(opts)
   assert(opts.source, "missing source position")
   assert(opts.target, "missing target position")
 
-  local facing = Vector.norm_mut({
-    x = opts.target.x - opts.source.x,
-    y = opts.target.y - opts.source.y
-  })
-
   ---@type Rocket
   return {
-    __type__ = Rocket.type(),
-    source = Vector.clone(opts.source),
-    target = Vector.clone(opts.target),
-    pos = Vector.clone(opts.source),
-    facing = facing,
+    __entity__ = Rocket.type(),
+    source = Vector(opts.source),
+    target = Vector(opts.target),
+    pos = Vector(opts.source),
+    facing = Vector.norm(opts.target - opts.source),
     speed = opts.speed or 350,
     lifetime = opts.lifetime or 2,
     trail_locations = {},
@@ -61,12 +56,11 @@ function Rocket.update(rocket, dt)
   rocket.lifetime = rocket.lifetime - dt
   rocket.next_trail_time = rocket.next_trail_time - dt
 
-  rocket.pos.x = rocket.pos.x + rocket.facing.x * rocket.speed * dt
-  rocket.pos.y = rocket.pos.y + rocket.facing.y * rocket.speed * dt
+  rocket.pos = rocket.pos + rocket.facing * rocket.speed * dt
 
   if rocket.next_trail_time <= 0 then
     -- table.insert(rocket.trail_locations, 1, { x = rocket.pos.x, y = rocket.pos.y })
-    table.insert(rocket.trail_locations, 1, Vector.clone(rocket.pos))
+    table.insert(rocket.trail_locations, 1, rocket.pos:clone())
     rocket.next_trail_time = trail_time
 
     if #rocket.trail_locations > max_trail_count then
@@ -74,9 +68,7 @@ function Rocket.update(rocket, dt)
     end
   end
 
-  local distance_to_target_sq =
-      (rocket.target.x - rocket.pos.x) * (rocket.target.x - rocket.pos.x) +
-      (rocket.target.y - rocket.pos.y) * (rocket.target.y - rocket.pos.y)
+  local distance_to_target_sq = Vector.length_sq(rocket.target - rocket.pos)
 
   if distance_to_target_sq <= distance_tolerance_sq or rocket.lifetime <= 0 then
     rocket.dead = true
@@ -87,11 +79,8 @@ function Rocket.update(rocket, dt)
 
       table.insert(new_entities,
         Particle.new({
-          pos = Vector.clone(rocket.pos),
-          facing = {
-            x = math.cos(angle_rad),
-            y = math.sin(angle_rad),
-          },
+          pos = rocket.pos:clone(),
+          facing = Vector(math.cos(angle_rad), math.sin(angle_rad)),
           speed = 100
         }))
     end

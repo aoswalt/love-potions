@@ -3,7 +3,7 @@
 ---@meta
 
 ---@class (exact) Entity
----@field __type__ string the internal type
+---@field __entity__ string the internal type
 ---@field pos Vector position
 ---@field dead? boolean is the particle dead
 

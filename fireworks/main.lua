@@ -1,5 +1,6 @@
 local Registry = require('registry')
 local Rocket = require('rocket')
+local Vector = require('vector')
 
 ---@type Entity[]
 local entities = {}
@@ -34,8 +35,8 @@ end
 
 function love.mousepressed(x, y, button)
   if button == 1 then
-    local source = { x = love.graphics.getWidth() / 2, y = love.graphics.getHeight() }
-    table.insert(entities, Rocket.new({ source = source, target = { x = x, y = y } }))
+    local source = Vector({ x = love.graphics.getWidth() / 2, y = love.graphics.getHeight() })
+    table.insert(entities, Rocket.new({ source = source, target = Vector(x, y) }))
   end
 end
 

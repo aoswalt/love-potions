@@ -11,6 +11,10 @@ local Vector = {}
 Vector.mt = Vector
 Vector.mt.__index = Vector.mt
 
+function Vector.type()
+  return 'vector'
+end
+
 ---construct a new Vector
 ---@param x_or_vec number | Vectorish
 ---@param y number | nil

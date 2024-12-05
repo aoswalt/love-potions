@@ -1,3 +1,3 @@
-# Steering
+# Fireworks
 
-Basic steering behaviors
+Simple fireworks with an emphasis on fully serializable state

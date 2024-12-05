@@ -1,39 +1,6 @@
-local Registry = {}
+---look up modules by key to be able to separte data from code
 
--- local modules = {}
--- local key_field = '__entity__'
---
--- function Registry.key_field()
---   return key_field
--- end
---
--- function Registry.register(key, module)
---   if modules[key] then
---     error("entity module already mapped for " .. key)
---   end
---
---   modules[key] = module
--- end
---
--- ---@param ent_or_key Entity | string
--- function Registry.lookup(ent_or_key)
---   local key
---
---   if type(ent_or_key) == 'string' then
---     key = ent_or_key
---   elseif type(ent_or_key) == 'table' then
---     key = ent_or_key[key_field]
---     assert(key, 'no value found under ' .. key_field .. ' for lookup')
---   else
---     error('invalid type for Registry lookup, got ' .. type(ent_or_key))
---   end
---
---   local mod = modules[key]
---
---   assert(mod, "entity module not found for " .. key)
---
---   return mod
--- end
+local Registry = {}
 
 function Registry.new(key_field)
   assert(key_field, 'key_field required for Registry definition')

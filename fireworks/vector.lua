@@ -243,4 +243,30 @@ function Vector.zero()
   return zeroVector
 end
 
+---flip the elements of a vector and return a new vector
+---@param v Vectorish
+---@return Vector
+function Vector.flip(v)
+  if type(v) == 'table' then
+    return Vector(-v.x, -v.y)
+  else
+    error('unknown type for Vector.flip, got ' .. type(v))
+  end
+end
+
+Vector.mt.__unm = Vector.flip
+
+---(mutate) flip the elements of a vector, mutating the vector
+---@param v Vectorish
+---@return Vectorish
+function Vector.flip_mut(v)
+  if type(v) == 'table' then
+    v.x = -v.x
+    v.y = -v.y
+    return v
+  else
+    error('unknown type for Vector.flip_mut, got ' .. type(v))
+  end
+end
+
 return Vector

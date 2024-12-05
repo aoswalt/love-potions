@@ -77,12 +77,12 @@ function Rocket.update(rocket, dt)
     for i = 0, count - 1 do
       local angle_rad = math.pi * 2 * (i / count)
 
-      table.insert(new_entities,
-        Particle.new({
-          pos = rocket.pos:clone(),
-          facing = Vector(math.cos(angle_rad), math.sin(angle_rad)),
-          speed = 100
-        }))
+      add_entity(Particle.new({
+        pos = rocket.pos,
+        facing = Vector(math.cos(angle_rad), math.sin(angle_rad)),
+        speed = 200,
+        lifetime = 0.75
+      }))
     end
   end
 end

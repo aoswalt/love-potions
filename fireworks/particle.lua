@@ -1,5 +1,6 @@
 local Registry = require('registry')
 local Vector = require('vector')
+local Spark = require('effects.spark')
 
 ---@class (exact) Particle: Entity
 ---@field package facing Vector normalized facing direction
@@ -43,6 +44,11 @@ function Particle.update(particle, dt)
 
   if particle.lifetime <= 0 then
     particle.dead = true
+
+    add_entity(Spark.new({
+      pos = particle.pos,
+    }))
+
     return
   end
 

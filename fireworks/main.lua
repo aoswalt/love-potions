@@ -1,3 +1,4 @@
+require('util')
 local Registry = require('registry')
 local Rocket = require('rocket')
 local Vector = require('vector')
@@ -5,9 +6,17 @@ local Vector = require('vector')
 ---@type Entity[]
 local entities = {}
 ---@type Entity[]
-new_entities = {}
+local new_entities = {}
 
-function love.load()
+---@diagnostic disable-next-line: lowercase-global
+function add_entity(entity)
+  table.insert(new_entities, entity)
+end
+
+function love.load(args)
+  if args[1] == 'debug' then
+    print(dump(args))
+  end
 end
 
 function love.update(dt)
@@ -49,5 +58,7 @@ end
 function love.keypressed(_key, scancode)
   if scancode == 'backspace' then
     love.event.quit('restart') -- recreates the whole lua state from scratch.
+  elseif scancode == '\\' then
+    debug.debug() -- pause and enter debug terminal
   end
 end

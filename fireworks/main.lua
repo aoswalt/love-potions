@@ -8,6 +8,7 @@ local entities = {}
 ---@type Entity[]
 local new_entities = {}
 
+---@param entity Entity
 ---@diagnostic disable-next-line: lowercase-global
 function add_entity(entity)
   table.insert(new_entities, entity)

@@ -269,4 +269,18 @@ function Vector.flip_mut(v)
   end
 end
 
+---Get a vector perpendicular to the given vector
+---@param v Vector
+---@return Vector
+function Vector.perpendicular(v)
+  return Vector.new(-v.y, v.x)
+end
+
+---Get a vector perpendicular (opposite) to the given vector
+---@param v Vector
+---@return Vector
+function Vector.perpendicular_opposite(v)
+  return Vector.new(v.y, -v.x)
+end
+
 return Vector

@@ -1,6 +1,7 @@
 local Particle = require('particle')
 local Vector = require('vector')
 local Registry = require('registry')
+local Streak = require('effects.streak')
 
 ---@class (exact) Rocket: Entity
 ---@field package source Vector source position
@@ -59,7 +60,6 @@ function Rocket.update(rocket, dt)
   rocket.pos = rocket.pos + rocket.facing * rocket.speed * dt
 
   if rocket.next_trail_time <= 0 then
-    -- table.insert(rocket.trail_locations, 1, { x = rocket.pos.x, y = rocket.pos.y })
     table.insert(rocket.trail_locations, 1, rocket.pos:clone())
     rocket.next_trail_time = trail_time
 
@@ -77,7 +77,7 @@ function Rocket.update(rocket, dt)
     for i = 0, count - 1 do
       local angle_rad = math.pi * 2 * (i / count)
 
-      add_entity(Particle.new({
+      add_entity(Streak.new({
         pos = rocket.pos,
         facing = Vector(math.cos(angle_rad), math.sin(angle_rad)),
         speed = 200,

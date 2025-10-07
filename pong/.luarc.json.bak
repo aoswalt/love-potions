@@ -1,0 +1,7 @@
+{
+  "diagnostics.globals": ["love"],
+  "diagnostics.unusedLocalExclude": ["_*"],
+  "format.defaultConfig": {
+    "quote_style": "single"
+  }
+}

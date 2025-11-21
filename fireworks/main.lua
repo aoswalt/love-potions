@@ -59,7 +59,11 @@ end
 function love.keypressed(_key, scancode)
   if scancode == 'backspace' then
     love.event.quit('restart') -- recreates the whole lua state from scratch.
-  elseif scancode == '\\' then
+  elseif scancode == 'f2' then
+    print('save')
+  elseif scancode == 'f5' then
+    print('load')
+  elseif scancode == 'f1' then
     debug.debug() -- pause and enter debug terminal
   end
 end

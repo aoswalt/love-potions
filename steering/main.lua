@@ -2,7 +2,6 @@ local Vector = require("vector")
 local Boid = require("boid")
 
 function love.load()
-  pos = Vector(50, 75)
   boid = Boid.new(Vector(100, 200))
   boid2 = Boid.new(Vector(400, 200))
   boid2.mass = 5
@@ -29,7 +28,6 @@ end
 function love.draw()
   boid:draw()
   boid2:draw()
-  love.graphics.rectangle("fill", pos.x, pos.y, 25, 25)
 end
 
 function love.keypressed(_key, scancode)

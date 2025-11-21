@@ -1,4 +1,3 @@
-local Particle = require('particle')
 local Vector = require('vector')
 local Registry = require('registry')
 local Streak = require('effects.streak')

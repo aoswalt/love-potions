@@ -11,3 +11,8 @@ function dump(o)
     return tostring(o)
   end
 end
+
+-- foo = {}
+-- setmetatable(foo, { __shl = function (t,v) t[#t+1]=v end })
+-- _= foo << "bar"
+-- _= foo << "baz"

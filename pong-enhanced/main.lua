@@ -1,5 +1,7 @@
 require('util')
 
+local pi = 3.141592
+
 local gameWidth, gameHeight = 640, 480
 
 local batWidth = 20
@@ -8,44 +10,93 @@ local batSpeed = 200
 local ballSize = 30
 local ballSpeed = 225
 
----expects self to have x, y, width, and height
-local function drawRect(self)
-  love.graphics.rectangle('fill', self.x - self.width / 2, self.y - self.height / 2, self.width, self.height)
-end
-
 ---expects self to have x, y, and radius
 local function drawCircle(self)
   love.graphics.circle('fill', self.x, self.y, self.radius)
 end
 
----AABB
-local function intersectRectRect(r1, r2)
-  return r1.x - r1.width / 2 <= r2.x + r2.width / 2 and
-      r1.x + r1.width / 2 >= r2.x - r2.width / 2 and
-      r1.y - r1.height / 2 >= r2.y - r2.height / 2 and
-      r1.y + r1.height / 2 <= r2.y + r2.height / 2
+---simple AABB check
+local function nearBat(ball, bat)
+  return ball.x - ball.radius <= bat.x + bat.width / 2 and
+      ball.x + ball.radius >= bat.x - bat.width / 2 and
+      ball.y - ball.radius >= bat.y - bat.height / 2 and
+      ball.y + ball.radius <= bat.y + bat.height / 2
 end
 
--- https://stackoverflow.com/a/402010
-local function intersectCircleRect(circle, rect)
-  -- simplify to only have to work in a single quadrant
-  local circleDistX = math.abs(circle.x - rect.x)
-  local circleDistY = math.abs(circle.y - rect.y)
+local function dot(x1, y1, x2, y2)
+  return x1 * x2 + y1 * y2
+end
 
-  -- check easy far enough away
-  if circleDistX > (rect.width / 2 + circle.radius) then return false end
-  if circleDistY > (rect.height / 2 + circle.radius) then return false end
+-- https://www.sevenson.com.au/programming/sat/
+local function handleCollision(ball, bat)
+  local minAxisOverlap = math.huge
+  local minAxisX = nil
+  local minAxisY = nil
 
-  -- check easy close enugh to guarantee
-  if (circleDistX <= (rect.width / 2)) then return true end
-  if (circleDistY <= (rect.height / 2)) then return true end
+  for ix = 1, #bat.shape, 2 do
+    local x1 = bat.shape[ix]
+    local y1 = bat.shape[ix + 1]
 
-  -- calculate corner range that could overlap
-  local cornerDistSq = (circleDistX - rect.width / 2) ^ 2 +
-      (circleDistY - rect.height / 2) ^ 2
+    local x2
+    local y2
 
-  -- compare corner range to radius
-  return cornerDistSq <= (circle.radius ^ 2)
+    if ix + 2 > #bat.shape then
+      x2 = bat.shape[1]
+      y2 = bat.shape[2]
+    else
+      x2 = bat.shape[ix + 2]
+      y2 = bat.shape[ix + 3]
+    end
+
+    local axisX = -(y2 - y1)
+    local axisY = x2 - x1
+
+    local axisMag = math.sqrt(axisX ^ 2 + axisY ^ 2)
+
+    if axisMag ~= 0 then
+      axisX = axisX / axisMag
+      axisY = axisY / axisMag
+    end
+
+    local p1min = dot(axisX, axisY, x1, y1)
+    local p1max = p1min
+
+    for j = 1, #bat.shape, 2 do
+      local vertDot = dot(axisX, axisY, bat.shape[j], bat.shape[j + 1])
+      p1min = math.min(p1min, vertDot)
+      p1max = math.max(p1max, vertDot)
+    end
+
+    local centerProjection = dot(axisX, axisY, ball.x, ball.y)
+    local p2min = centerProjection - ball.radius
+    local p2max = centerProjection + ball.radius
+
+    -- quick overlap test of the min and max from both polygons
+    if (p1min - p2max > 0) or (p2min - p1max > 0) then
+      -- there is a gap - bail
+      return
+    end
+
+    -- keep track of which axis has the smallest shadow overlap (and how much of an overlap that was) then you can apply that value to the shapes to separate them.
+    local minOverlap = math.min(p1min - p2max, p2min - p1max)
+
+    if minOverlap < minAxisOverlap then
+      minAxisOverlap = minOverlap
+      minAxisX = axisX
+      minAxisY = axisY
+    end
+  end
+
+  ball.x = ball.x + minAxisX
+  ball.y = ball.y + minAxisY
+  -- ball:setSpeed(0, 0)
+
+  local dotted = dot(ball.speedX, ball.speedY, minAxisX, minAxisY)
+
+  local reflectX = ball.speedX - 2 * dotted * minAxisX
+  local reflectY = ball.speedY - 2 * dotted * minAxisY
+
+  ball:setSpeed(reflectX, reflectY)
 end
 
 local controls = {
@@ -60,9 +111,91 @@ local controls = {
   confirm = false,
 }
 
+local function buildBatVerticies(flipHoriz)
+  -- shape math is done from 0 to 1
+  local trArcCenter = { x = 0.5, y = 0.25 }
+  local brArcCenter = { x = 0.5, y = 0.75 }
+  local arcSteps = 4
+  local arcSize = { x = 0.5, y = 0.25 }
+
+  local verticies = {}
+
+  -- tl
+  table.insert(verticies, 0)
+  table.insert(verticies, 0)
+
+  -- tr
+  for i = 0, arcSteps do
+    local startRad = pi * 1.5 -- start at 3/4
+    local rad = startRad + pi / 2 * i / arcSteps
+
+    table.insert(verticies, trArcCenter.x + math.cos(rad) * arcSize.x)
+    table.insert(verticies, trArcCenter.y + math.sin(rad) * arcSize.y)
+  end
+
+  -- br
+  for i = 0, arcSteps do
+    local startRad = 0 -- start at 0
+    local rad = startRad + pi / 2 * i / arcSteps
+
+    table.insert(verticies, brArcCenter.x + math.cos(rad) * arcSize.x)
+    table.insert(verticies, brArcCenter.y + math.sin(rad) * arcSize.y)
+  end
+
+  -- bl
+  table.insert(verticies, 0)
+  table.insert(verticies, 1)
+
+  if flipHoriz then
+    for ix, val in ipairs(verticies) do
+      -- 1 indexed, so start at 1 for checks
+      if ix % 2 == 1 then
+        verticies[ix] = 1 - val
+      end
+    end
+  end
+
+  return verticies
+end
+
+local function buildScaledBatShape(width, height, flipHoriz)
+  local verticies = buildBatVerticies(flipHoriz)
+
+  local scaledVerts = {}
+
+  -- scale to bat size
+  for ix, val in ipairs(verticies) do
+    -- 1 indexed, so start at 1 for checks
+    if ix % 2 == 1 then
+      scaledVerts[ix] = val * width
+    else
+      scaledVerts[ix] = val * height
+    end
+  end
+
+  return scaledVerts
+end
+
+local function drawBat(bat)
+  love.graphics.polygon('fill', bat.shape)
+end
+
 local function updateBat(bat, dt)
   bat.x = bat.x + bat.speedX * batSpeed * dt
   bat.y = bat.y + bat.speedY * batSpeed * dt
+
+  local newShape = {}
+
+  for ix, val in ipairs(bat.baseShape) do
+    -- 1 indexed, so start at 1 for checks
+    if ix % 2 == 1 then
+      newShape[ix] = val + bat.x - bat.width / 2
+    else
+      newShape[ix] = val + bat.y - bat.height / 2
+    end
+  end
+
+  bat.shape = newShape
 end
 
 local function setBatSpeed(bat, x, y)
@@ -77,7 +210,9 @@ local bat1 = {
   speedY = 0,
   width = batWidth,
   height = batHeight,
-  draw = drawRect,
+  baseShape = buildScaledBatShape(batWidth, batHeight),
+  shape = {},
+  draw = drawBat,
   update = updateBat,
   setSpeed = setBatSpeed,
 }
@@ -89,7 +224,9 @@ local bat2 = {
   speedY = 0,
   width = batWidth,
   height = batHeight,
-  draw = drawRect,
+  baseShape = buildScaledBatShape(batWidth, batHeight, true),
+  shape = {},
+  draw = drawBat,
   update = updateBat,
   setSpeed = setBatSpeed,
 }
@@ -300,16 +437,15 @@ function love.update(dt)
     ball.y = gameHeight - ball.radius
   end
 
+
   -- returning p1
-  if intersectCircleRect(ball, bat1) then
-    ball.x = ball.radius + bat1.x + bat1.width / 2
-    ball.speedX = -ball.speedX
+  if ball.x < gameWidth * 0.2 and nearBat(ball, bat1) then
+    handleCollision(ball, bat1)
   end
 
   -- returning p2
-  if intersectCircleRect(ball, bat2) then
-    ball.x = bat2.x - bat2.width / 2 - ball.radius
-    ball.speedX = -ball.speedX
+  if ball.x > gameWidth * 0.8 and nearBat(ball, bat2) then
+    handleCollision(ball, bat2)
   end
 
   camera:update(dt)

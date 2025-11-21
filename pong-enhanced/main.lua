@@ -10,94 +10,10 @@ local batSpeed = 200
 local ballSize = 30
 local ballSpeed = 225
 
----expects self to have x, y, and radius
-local function drawCircle(self)
-  love.graphics.circle('fill', self.x, self.y, self.radius)
-end
-
----simple AABB check
-local function nearBat(ball, bat)
-  return ball.x - ball.radius <= bat.x + bat.width / 2 and
-      ball.x + ball.radius >= bat.x - bat.width / 2 and
-      ball.y - ball.radius >= bat.y - bat.height / 2 and
-      ball.y + ball.radius <= bat.y + bat.height / 2
-end
-
-local function dot(x1, y1, x2, y2)
-  return x1 * x2 + y1 * y2
-end
-
--- https://www.sevenson.com.au/programming/sat/
-local function handleCollision(ball, bat)
-  local minAxisOverlap = math.huge
-  local minAxisX = nil
-  local minAxisY = nil
-
-  for ix = 1, #bat.shape, 2 do
-    local x1 = bat.shape[ix]
-    local y1 = bat.shape[ix + 1]
-
-    local x2
-    local y2
-
-    if ix + 2 > #bat.shape then
-      x2 = bat.shape[1]
-      y2 = bat.shape[2]
-    else
-      x2 = bat.shape[ix + 2]
-      y2 = bat.shape[ix + 3]
-    end
-
-    local axisX = -(y2 - y1)
-    local axisY = x2 - x1
-
-    local axisMag = math.sqrt(axisX ^ 2 + axisY ^ 2)
-
-    if axisMag ~= 0 then
-      axisX = axisX / axisMag
-      axisY = axisY / axisMag
-    end
-
-    local p1min = dot(axisX, axisY, x1, y1)
-    local p1max = p1min
-
-    for j = 1, #bat.shape, 2 do
-      local vertDot = dot(axisX, axisY, bat.shape[j], bat.shape[j + 1])
-      p1min = math.min(p1min, vertDot)
-      p1max = math.max(p1max, vertDot)
-    end
-
-    local centerProjection = dot(axisX, axisY, ball.x, ball.y)
-    local p2min = centerProjection - ball.radius
-    local p2max = centerProjection + ball.radius
-
-    -- quick overlap test of the min and max from both polygons
-    if (p1min - p2max > 0) or (p2min - p1max > 0) then
-      -- there is a gap - bail
-      return
-    end
-
-    -- keep track of which axis has the smallest shadow overlap (and how much of an overlap that was) then you can apply that value to the shapes to separate them.
-    local minOverlap = math.min(p1min - p2max, p2min - p1max)
-
-    if minOverlap < minAxisOverlap then
-      minAxisOverlap = minOverlap
-      minAxisX = axisX
-      minAxisY = axisY
-    end
-  end
-
-  ball.x = ball.x + minAxisX
-  ball.y = ball.y + minAxisY
-  -- ball:setSpeed(0, 0)
-
-  local dotted = dot(ball.speedX, ball.speedY, minAxisX, minAxisY)
-
-  local reflectX = ball.speedX - 2 * dotted * minAxisX
-  local reflectY = ball.speedY - 2 * dotted * minAxisY
-
-  ball:setSpeed(reflectX, reflectY)
-end
+local world
+local bat1
+local bat2
+local ball
 
 local controls = {
   p1 = {
@@ -115,7 +31,7 @@ local function buildBatVerticies(flipHoriz)
   -- shape math is done from 0 to 1
   local trArcCenter = { x = 0.5, y = 0.25 }
   local brArcCenter = { x = 0.5, y = 0.75 }
-  local arcSteps = 4
+  local arcSteps = 1
   local arcSize = { x = 0.5, y = 0.25 }
 
   local verticies = {}
@@ -176,111 +92,92 @@ local function buildScaledBatShape(width, height, flipHoriz)
   return scaledVerts
 end
 
-local function drawBat(bat)
-  love.graphics.polygon('fill', bat.shape)
+local Bat = {}
+
+function Bat:new(args)
+  args = args or {}
+
+  local verticies = buildScaledBatShape(batWidth, batHeight, args.flipHoriz)
+
+  local b = {}
+
+  b.body = love.physics.newBody(world, args.x, args.y, 'dynamic')
+  b.body:setFixedRotation(true)
+  b.shape = love.physics.newPolygonShape(verticies)
+  b.fixture = love.physics.newFixture(b.body, b.shape)
+  -- b.fixture:setRestitution(1)
+  b.fixture:setUserData(b)
+
+  setmetatable(b, self)
+  self.__index = self
+  return b
 end
 
-local function updateBat(bat, dt)
-  bat.x = bat.x + bat.speedX * batSpeed * dt
-  bat.y = bat.y + bat.speedY * batSpeed * dt
+function Bat.draw(bat)
+  love.graphics.polygon("fill", bat.body:getWorldPoints(bat.shape:getPoints()))
+end
 
-  local newShape = {}
+function Bat.update(bat, dt)
+end
 
-  for ix, val in ipairs(bat.baseShape) do
-    -- 1 indexed, so start at 1 for checks
-    if ix % 2 == 1 then
-      newShape[ix] = val + bat.x - bat.width / 2
-    else
-      newShape[ix] = val + bat.y - bat.height / 2
+local Ball = {}
+
+function Ball:new(args)
+  args = args or {}
+
+  local b = {
+    radius = args.radius,
+    trailDuration = 0.1,
+    trailTimeout = 0,
+    trailMaxLength = 40,
+    trail = {}
+  }
+
+  b.body = love.physics.newBody(world, args.x, args.y, 'dynamic')
+  b.shape = love.physics.newCircleShape(args.radius or ballSize / 2)
+  b.fixture = love.physics.newFixture(b.body, b.shape)
+  b.fixture:setRestitution(1)
+  b.fixture:setUserData(b)
+
+  setmetatable(b, self)
+  self.__index = self
+  return b
+end
+
+function Ball.draw(ball)
+  if #ball.trail > 1 then
+    for i = #ball.trail, 2, -1 do
+      local widthPct = ((#ball.trail - (i + 1)) / #ball.trail) * 0.8
+      local width = widthPct * ball.radius * 2
+      love.graphics.setLineWidth(width)
+      love.graphics.setColor(widthPct, widthPct, widthPct)
+      love.graphics.line(ball.trail[i - 1].x, ball.trail[i - 1].y, ball.trail[i].x, ball.trail[i].y)
+      love.graphics.circle('fill', ball.trail[i].x, ball.trail[i].y, width / 2)
     end
   end
 
-  bat.shape = newShape
+  love.graphics.setColor(1, 1, 1)
+  love.graphics.circle('fill', ball.body:getX(), ball.body:getY(), ball.radius)
 end
 
-local function setBatSpeed(bat, x, y)
-  bat.speedX = x
-  bat.speedY = y
-end
+function Ball.update(ball, dt)
+  local velX, velY = ball.body:getLinearVelocity()
 
-local bat1 = {
-  x = 40,
-  y = gameHeight / 2,
-  speedX = 0,
-  speedY = 0,
-  width = batWidth,
-  height = batHeight,
-  baseShape = buildScaledBatShape(batWidth, batHeight),
-  shape = {},
-  draw = drawBat,
-  update = updateBat,
-  setSpeed = setBatSpeed,
-}
-
-local bat2 = {
-  x = gameWidth - 40,
-  y = gameHeight / 2,
-  speedX = 0,
-  speedY = 0,
-  width = batWidth,
-  height = batHeight,
-  baseShape = buildScaledBatShape(batWidth, batHeight, true),
-  shape = {},
-  draw = drawBat,
-  update = updateBat,
-  setSpeed = setBatSpeed,
-}
-
-
-local ball = {
-  x = gameWidth / 2,
-  y = gameHeight / 2,
-  radius = ballSize / 2,
-  trail = {},
-  trailDuration = 0.1,
-  trailTimeout = 0,
-  trailMaxLength = 40,
-  speedX = 0,
-  speedY = 0,
-  draw = function(ball)
-    if #ball.trail > 1 then
-      for i = #ball.trail, 2, -1 do
-        local widthPct = ((#ball.trail - (i + 1)) / #ball.trail) * 0.8
-        local width = widthPct * ball.radius * 2
-        love.graphics.setLineWidth(width)
-        love.graphics.setColor(widthPct, widthPct, widthPct)
-        love.graphics.line(ball.trail[i - 1].x, ball.trail[i - 1].y, ball.trail[i].x, ball.trail[i].y)
-        love.graphics.circle('fill', ball.trail[i].x, ball.trail[i].y, width / 2)
-      end
-    end
-
-    love.graphics.setColor(1, 1, 1)
-    drawCircle(ball)
-  end,
-  update = function(ball, dt)
-    ball.x = ball.x + ball.speedX * ballSpeed * dt
-    ball.y = ball.y + ball.speedY * ballSpeed * dt
-
-    if ball.speedX ~= 0 or ball.speedY ~= 0 then
-      table.insert(ball.trail, 1, { x = ball.x, y = ball.y })
-    end
-
-    ball.trailTimeout = ball.trailTimeout + dt
-
-    if ball.trailTimeout >= ball.trailDuration then
-      ball.trailTimeout = ball.trailTimeout - ball.trailDuration
-      ball.trail[#ball.trail] = nil
-    end
-
-    while #ball.trail > ball.trailMaxLength do
-      ball.trail[#ball.trail] = nil
-    end
-  end,
-  setSpeed = function(ball, x, y)
-    ball.speedX = x
-    ball.speedY = y
+  if velX ~= 0 or velY ~= 0 then
+    table.insert(ball.trail, 1, { x = ball.body:getX(), y = ball.body:getY() })
   end
-}
+
+  ball.trailTimeout = ball.trailTimeout + dt
+
+  if ball.trailTimeout >= ball.trailDuration then
+    ball.trailTimeout = ball.trailTimeout - ball.trailDuration
+    ball.trail[#ball.trail] = nil
+  end
+
+  while #ball.trail > ball.trailMaxLength do
+    ball.trail[#ball.trail] = nil
+  end
+end
 
 local match = {
   started = false,
@@ -352,10 +249,8 @@ local camera = {
 }
 
 local function reset()
-  ball.x = gameWidth / 2
-  ball.y = gameHeight / 2
-  ball.speedX = 0
-  ball.speedY = 0
+  ball.body:setPosition(gameWidth / 2, gameHeight / 2)
+  ball.body:setLinearVelocity(0, 0)
   ball.trail = {}
   match.started = false
 end
@@ -368,26 +263,63 @@ function love.load()
   love.graphics.setFont(font)
 
   math.randomseed(os.time())
+
+  world = love.physics.newWorld(0, 0, true)
+
+  -- walls
+  local wallTop = {}
+  wallTop.body = love.physics.newBody(world, gameWidth / 2, -1, 'static')
+  wallTop.shape = love.physics.newRectangleShape(gameWidth, 1)
+  wallTop.fixture = love.physics.newFixture(wallTop.body, wallTop.shape)
+
+  local wallBottom = {}
+  wallBottom.body = love.physics.newBody(world, gameWidth / 2, gameHeight + 1, 'static')
+  wallBottom.shape = love.physics.newRectangleShape(gameWidth, 1)
+  wallBottom.fixture = love.physics.newFixture(wallBottom.body, wallBottom.shape)
+
+  local wallLeft = {}
+  wallLeft.body = love.physics.newBody(world, -1, gameHeight / 2, 'static')
+  wallLeft.shape = love.physics.newRectangleShape(1, gameWidth)
+  wallLeft.fixture = love.physics.newFixture(wallLeft.body, wallLeft.shape)
+  -- wallLeft.fixture:setSensor(true)
+
+  local wallRight = {}
+  wallRight.body = love.physics.newBody(world, gameWidth + 1, gameHeight / 2, 'static')
+  wallRight.shape = love.physics.newRectangleShape(1, gameWidth)
+  wallRight.fixture = love.physics.newFixture(wallRight.body, wallRight.shape)
+  -- wallRight.fixture:setSensor(true)
+
+
+  -- love.physics.setMeter(1)
+  bat1 = Bat:new({ x = 40, y = gameHeight / 2 })
+  bat2 = Bat:new({ x = gameWidth - 40, y = gameHeight / 2, flipHoriz = true })
+  ball = Ball:new({
+    x = gameWidth / 2,
+    y = gameHeight / 2,
+    radius = ballSize / 2,
+  })
 end
 
 function love.update(dt)
-  bat1:setSpeed(controls.p1.x, controls.p1.y)
-  bat2:setSpeed(controls.p2.x, controls.p2.y)
+  world:update(dt)
+
+  bat1.body:setLinearVelocity(controls.p1.x * 200, controls.p1.y * batSpeed)
+  bat2.body:setLinearVelocity(controls.p2.x * 200, controls.p2.y * batSpeed)
 
   bat1:update(dt)
   bat2:update(dt)
 
-  if bat1.y - bat1.height / 2 < 0 then
-    bat1.y = bat1.height / 2
-  elseif bat1.y + bat1.height / 2 > gameHeight then
-    bat1.y = gameHeight - bat1.height / 2
-  end
+  -- if bat1.y - bat1.height / 2 < 0 then
+  --   bat1.y = bat1.height / 2
+  -- elseif bat1.y + bat1.height / 2 > gameHeight then
+  --   bat1.y = gameHeight - bat1.height / 2
+  -- end
 
-  if bat2.y - bat2.height / 2 < 0 then
-    bat2.y = bat2.height / 2
-  elseif bat2.y + bat2.height / 2 > gameHeight then
-    bat2.y = gameHeight - bat2.height / 2
-  end
+  -- if bat2.y - bat2.height / 2 < 0 then
+  --   bat2.y = bat2.height / 2
+  -- elseif bat2.y + bat2.height / 2 > gameHeight then
+  --   bat2.y = gameHeight - bat2.height / 2
+  -- end
 
   if controls.confirm and not match.started then
     controls.confirm = false
@@ -408,45 +340,45 @@ function love.update(dt)
       [4] = { x = -1, y = -1 }, -- TL
     }
 
-    ball:setSpeed(dir[dirNum].x * x, dir[dirNum].y * y)
+    ball.body:setLinearVelocity(dir[dirNum].x * x * ballSpeed, dir[dirNum].y * y * ballSpeed)
   end
 
   ball:update(dt)
 
-  -- scoring
-  if ball.x - ball.radius <= 0 then
-    ball.speedX = -ball.speedX
-    ball.x = ball.radius
-    match.score2 = match.score2 + 1
-    camera:bump('l')
-    reset()
-  elseif ball.x + ball.radius >= gameWidth then
-    ball.speedX = -ball.speedX
-    ball.x = gameWidth - ball.radius
-    match.score1 = match.score1 + 1
-    camera:bump('r')
-    reset()
-  end
+  -- -- scoring
+  -- if ball.x - ball.radius <= 0 then
+  --   ball.speedX = -ball.speedX
+  --   ball.x = ball.radius
+  --   match.score2 = match.score2 + 1
+  --   camera:bump('l')
+  --   reset()
+  -- elseif ball.x + ball.radius >= gameWidth then
+  --   ball.speedX = -ball.speedX
+  --   ball.x = gameWidth - ball.radius
+  --   match.score1 = match.score1 + 1
+  --   camera:bump('r')
+  --   reset()
+  -- end
 
-  -- keeping in bounds
-  if ball.y - ball.radius <= 0 then
-    ball.speedY = -ball.speedY
-    ball.y = ball.radius
-  elseif ball.y + ball.radius >= gameHeight then
-    ball.speedY = -ball.speedY
-    ball.y = gameHeight - ball.radius
-  end
+  -- -- keeping in bounds
+  -- if ball.y - ball.radius <= 0 then
+  --   ball.speedY = -ball.speedY
+  --   ball.y = ball.radius
+  -- elseif ball.y + ball.radius >= gameHeight then
+  --   ball.speedY = -ball.speedY
+  --   ball.y = gameHeight - ball.radius
+  -- end
 
 
-  -- returning p1
-  if ball.x < gameWidth * 0.2 and nearBat(ball, bat1) then
-    handleCollision(ball, bat1)
-  end
+  -- -- returning p1
+  -- if ball.x < gameWidth * 0.2 and nearBat(ball, bat1) then
+  --   handleCollision(ball, bat1)
+  -- end
 
-  -- returning p2
-  if ball.x > gameWidth * 0.8 and nearBat(ball, bat2) then
-    handleCollision(ball, bat2)
-  end
+  -- -- returning p2
+  -- if ball.x > gameWidth * 0.8 and nearBat(ball, bat2) then
+  --   handleCollision(ball, bat2)
+  -- end
 
   camera:update(dt)
 end

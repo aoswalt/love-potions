@@ -15,6 +15,8 @@ local bat1
 local bat2
 local ball
 
+local event
+
 local controls = {
   p1 = {
     x = 0.0,
@@ -31,7 +33,7 @@ local function buildBatVerticies(flipHoriz)
   -- shape math is done from 0 to 1
   local trArcCenter = { x = 0.5, y = 0.25 }
   local brArcCenter = { x = 0.5, y = 0.75 }
-  local arcSteps = 1
+  local arcSteps = 4
   local arcSize = { x = 0.5, y = 0.25 }
 
   local verticies = {}
@@ -97,16 +99,32 @@ local Bat = {}
 function Bat:new(args)
   args = args or {}
 
-  local verticies = buildScaledBatShape(batWidth, batHeight, args.flipHoriz)
+  local flipHoriz
 
-  local b = {}
+  if args.label == 'p1' then
+    flipHoriz = false
+  elseif args.label == 'p2' then
+    flipHoriz = true
+  else
+    error('invalid label for bat: ' .. tostring(args.label))
+  end
+
+  local verticies = buildScaledBatShape(batWidth, batHeight, flipHoriz)
+  -- could explicitly build shapes instead of triangulating 1 large one
+  local tris = love.math.triangulate(verticies)
+
+  local b = {
+    label = args.label
+  }
 
   b.body = love.physics.newBody(world, args.x, args.y, 'dynamic')
   b.body:setFixedRotation(true)
-  b.shape = love.physics.newPolygonShape(verticies)
-  b.fixture = love.physics.newFixture(b.body, b.shape)
-  -- b.fixture:setRestitution(1)
-  b.fixture:setUserData(b)
+
+  for _, tri in ipairs(tris) do
+    local shape = love.physics.newPolygonShape(tri)
+    local fixture = love.physics.newFixture(b.body, shape)
+    fixture:setUserData(b)
+  end
 
   setmetatable(b, self)
   self.__index = self
@@ -114,7 +132,10 @@ function Bat:new(args)
 end
 
 function Bat.draw(bat)
-  love.graphics.polygon("fill", bat.body:getWorldPoints(bat.shape:getPoints()))
+  for _, fix in ipairs(bat.body:getFixtures()) do
+    local shape = fix:getShape()
+    love.graphics.polygon("fill", bat.body:getWorldPoints(shape:getPoints()))
+  end
 end
 
 function Bat.update(bat, dt)
@@ -126,6 +147,7 @@ function Ball:new(args)
   args = args or {}
 
   local b = {
+    label = 'ball',
     radius = args.radius,
     trailDuration = 0.1,
     trailTimeout = 0,
@@ -249,10 +271,21 @@ local camera = {
 }
 
 local function reset()
+  event = nil
   ball.body:setPosition(gameWidth / 2, gameHeight / 2)
   ball.body:setLinearVelocity(0, 0)
   ball.trail = {}
   match.started = false
+end
+
+local function fixBallVelocity(body)
+  local xVel, yVel = body:getLinearVelocity()
+  local velLen = math.sqrt(xVel ^ 2 + yVel ^ 2)
+  local xVelNorm = xVel / velLen
+  local yVelNorm = yVel / velLen
+  local xVelNew = xVelNorm * ballSpeed * 1.25
+  local yVelNew = yVelNorm * ballSpeed * 1.25
+  body:setLinearVelocity(xVelNew, yVelNew)
 end
 
 function love.load()
@@ -264,35 +297,65 @@ function love.load()
 
   math.randomseed(os.time())
 
-  world = love.physics.newWorld(0, 0, true)
+  world = love.physics.newWorld(0, 0)
+
+  -- how to fix loss of x velocity when bouncing off of top/bottom wall? is it due to resolution?
+  -- need info from contact or postSolve?
+  world:setCallbacks(nil, function(a, b, _coll)
+    local aData = a:getUserData()
+    local aLabel = aData.label or aData
+    local bData = b:getUserData()
+    local bLabel = bData.label or aData
+
+    -- scoring
+    if aLabel == 'wallRight' and bLabel == 'ball' or aLabel == 'ball' and bLabel == 'wallRight' then
+      event = 'p1_scored'
+      return
+    end
+
+    if aLabel == 'wallLeft' and bLabel == 'ball' or aLabel == 'ball' and bLabel == 'wallLeft' then
+      event = 'p2_scored'
+      return
+    end
+
+    if aLabel == 'ball' then
+      fixBallVelocity(a:getBody())
+    end
+
+    if bLabel == 'ball' then
+      fixBallVelocity(b:getBody())
+    end
+  end)
 
   -- walls
   local wallTop = {}
   wallTop.body = love.physics.newBody(world, gameWidth / 2, -1, 'static')
   wallTop.shape = love.physics.newRectangleShape(gameWidth, 1)
   wallTop.fixture = love.physics.newFixture(wallTop.body, wallTop.shape)
+  wallTop.fixture:setUserData('wallTop')
 
   local wallBottom = {}
   wallBottom.body = love.physics.newBody(world, gameWidth / 2, gameHeight + 1, 'static')
   wallBottom.shape = love.physics.newRectangleShape(gameWidth, 1)
   wallBottom.fixture = love.physics.newFixture(wallBottom.body, wallBottom.shape)
+  wallBottom.fixture:setUserData('wallBottom')
 
   local wallLeft = {}
   wallLeft.body = love.physics.newBody(world, -1, gameHeight / 2, 'static')
   wallLeft.shape = love.physics.newRectangleShape(1, gameWidth)
   wallLeft.fixture = love.physics.newFixture(wallLeft.body, wallLeft.shape)
-  -- wallLeft.fixture:setSensor(true)
+  wallLeft.fixture:setUserData('wallLeft')
+  wallLeft.fixture:setSensor(true)
 
   local wallRight = {}
   wallRight.body = love.physics.newBody(world, gameWidth + 1, gameHeight / 2, 'static')
   wallRight.shape = love.physics.newRectangleShape(1, gameWidth)
   wallRight.fixture = love.physics.newFixture(wallRight.body, wallRight.shape)
-  -- wallRight.fixture:setSensor(true)
+  wallRight.fixture:setUserData('wallRight')
+  wallRight.fixture:setSensor(true)
 
-
-  -- love.physics.setMeter(1)
-  bat1 = Bat:new({ x = 40, y = gameHeight / 2 })
-  bat2 = Bat:new({ x = gameWidth - 40, y = gameHeight / 2, flipHoriz = true })
+  bat1 = Bat:new({ label = 'p1', x = 20, y = gameHeight / 2 })
+  bat2 = Bat:new({ label = 'p2', x = gameWidth - 40, y = gameHeight / 2 })
   ball = Ball:new({
     x = gameWidth / 2,
     y = gameHeight / 2,
@@ -301,25 +364,24 @@ function love.load()
 end
 
 function love.update(dt)
-  world:update(dt)
+  if not event then
+  elseif event == 'p1_scored' then
+    match.score1 = match.score1 + 1
+    camera:bump('r')
+    reset()
+  elseif event == 'p2_scored' then
+    match.score2 = match.score2 + 1
+    camera:bump('l')
+    reset()
+  else
+    error('unknown event: ' .. tostring(event))
+  end
 
   bat1.body:setLinearVelocity(controls.p1.x * 200, controls.p1.y * batSpeed)
   bat2.body:setLinearVelocity(controls.p2.x * 200, controls.p2.y * batSpeed)
 
   bat1:update(dt)
   bat2:update(dt)
-
-  -- if bat1.y - bat1.height / 2 < 0 then
-  --   bat1.y = bat1.height / 2
-  -- elseif bat1.y + bat1.height / 2 > gameHeight then
-  --   bat1.y = gameHeight - bat1.height / 2
-  -- end
-
-  -- if bat2.y - bat2.height / 2 < 0 then
-  --   bat2.y = bat2.height / 2
-  -- elseif bat2.y + bat2.height / 2 > gameHeight then
-  --   bat2.y = gameHeight - bat2.height / 2
-  -- end
 
   if controls.confirm and not match.started then
     controls.confirm = false
@@ -345,42 +407,9 @@ function love.update(dt)
 
   ball:update(dt)
 
-  -- -- scoring
-  -- if ball.x - ball.radius <= 0 then
-  --   ball.speedX = -ball.speedX
-  --   ball.x = ball.radius
-  --   match.score2 = match.score2 + 1
-  --   camera:bump('l')
-  --   reset()
-  -- elseif ball.x + ball.radius >= gameWidth then
-  --   ball.speedX = -ball.speedX
-  --   ball.x = gameWidth - ball.radius
-  --   match.score1 = match.score1 + 1
-  --   camera:bump('r')
-  --   reset()
-  -- end
-
-  -- -- keeping in bounds
-  -- if ball.y - ball.radius <= 0 then
-  --   ball.speedY = -ball.speedY
-  --   ball.y = ball.radius
-  -- elseif ball.y + ball.radius >= gameHeight then
-  --   ball.speedY = -ball.speedY
-  --   ball.y = gameHeight - ball.radius
-  -- end
-
-
-  -- -- returning p1
-  -- if ball.x < gameWidth * 0.2 and nearBat(ball, bat1) then
-  --   handleCollision(ball, bat1)
-  -- end
-
-  -- -- returning p2
-  -- if ball.x > gameWidth * 0.8 and nearBat(ball, bat2) then
-  --   handleCollision(ball, bat2)
-  -- end
-
   camera:update(dt)
+
+  world:update(dt)
 end
 
 function love.draw()

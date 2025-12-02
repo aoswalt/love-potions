@@ -29,6 +29,8 @@ local controls = {
   confirm = false,
 }
 
+local shaders = {}
+
 local function buildBatVerticies(flipHoriz)
   -- shape math is done from 0 to 1
   local trArcCenter = { x = 0.5, y = 0.25 }
@@ -167,18 +169,20 @@ function Ball:new(args)
 end
 
 function Ball.draw(ball)
+  local r, g, b, a = love.graphics.getColor()
+
   if #ball.trail > 1 then
     for i = #ball.trail, 2, -1 do
       local widthPct = ((#ball.trail - (i + 1)) / #ball.trail) * 0.8
       local width = widthPct * ball.radius * 2
       love.graphics.setLineWidth(width)
-      love.graphics.setColor(widthPct, widthPct, widthPct)
+      love.graphics.setColor(widthPct * r, widthPct * g, widthPct * b)
       love.graphics.line(ball.trail[i - 1].x, ball.trail[i - 1].y, ball.trail[i].x, ball.trail[i].y)
       love.graphics.circle('fill', ball.trail[i].x, ball.trail[i].y, width / 2)
     end
   end
 
-  love.graphics.setColor(1, 1, 1)
+  love.graphics.setColor(r, g, b, a)
   love.graphics.circle('fill', ball.body:getX(), ball.body:getY(), ball.radius)
 end
 
@@ -294,6 +298,8 @@ function love.load()
   local font = love.graphics.newFont(56)
   font:setFilter('nearest')
   love.graphics.setFont(font)
+
+  shaders.ballLight = love.graphics.newShader("ballLight.glsl")
 
   math.randomseed(os.time())
 
@@ -424,10 +430,19 @@ function love.draw()
 
   bat1:draw()
   bat2:draw()
+
+  love.graphics.setColor(0.2, 1.0, 0.5, 1.0)
+  love.graphics.setShader(shaders.ballLight)
+  shaders.ballLight:send("ballPosition",
+    { ball.body:getX() * (winWidth / gameWidth), ball.body:getY() * (winHeight / gameHeight) })
+  shaders.ballLight:send("ballRadius", ball.radius)
+  love.graphics.rectangle('fill', 0, 0, gameWidth, gameHeight)
+  love.graphics.setShader()
   ball:draw()
 
   love.graphics.pop()
 
+  love.graphics.setColor(1.0, 1.0, 1.0, 1.0)
   love.graphics.print(tostring(match.score1), 25, 25)
   love.graphics.print(tostring(match.score2), gameWidth - 25 - 40, 25)
 end

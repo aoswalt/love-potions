@@ -87,9 +87,9 @@ local function buildScaledBatShape(width, height, flipHoriz)
   for ix, val in ipairs(verticies) do
     -- 1 indexed, so start at 1 for checks
     if ix % 2 == 1 then
-      scaledVerts[ix] = val * width
+      scaledVerts[ix] = (val - 0.5) * width
     else
-      scaledVerts[ix] = val * height
+      scaledVerts[ix] = (val - 0.5) * height
     end
   end
 
@@ -360,8 +360,8 @@ function love.load()
   wallRight.fixture:setUserData('wallRight')
   wallRight.fixture:setSensor(true)
 
-  bat1 = Bat:new({ label = 'p1', x = 20, y = gameHeight / 2 })
-  bat2 = Bat:new({ label = 'p2', x = gameWidth - 40, y = gameHeight / 2 })
+  bat1 = Bat:new({ label = 'p1', x = 30, y = gameHeight / 2 })
+  bat2 = Bat:new({ label = 'p2', x = gameWidth - 30, y = gameHeight / 2 })
   ball = Ball:new({
     x = gameWidth / 2,
     y = gameHeight / 2,

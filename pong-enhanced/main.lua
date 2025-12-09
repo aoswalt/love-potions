@@ -21,15 +21,22 @@ local controls = {
   p1 = {
     x = 0.0,
     y = 0.0,
+    r = 0.0,
   },
   p2 = {
     x = 0.0,
     y = 0.0,
+    r = 0.0,
   },
   confirm = false,
 }
 
 local shaders = {}
+
+local function getScale()
+  local winWidth, winHeight = love.graphics.getDimensions()
+  return winWidth / gameWidth, winHeight / gameHeight
+end
 
 local function buildBatVerticies(flipHoriz)
   -- shape math is done from 0 to 1
@@ -116,7 +123,9 @@ function Bat:new(args)
   local tris = love.math.triangulate(verticies)
 
   local b = {
-    label = args.label
+    label = args.label,
+    canvasMain = love.graphics.newCanvas(batWidth * 2, batHeight * 2),
+    canvasGlow = love.graphics.newCanvas(batWidth * 2, batHeight * 2),
   }
 
   b.body = love.physics.newBody(world, args.x, args.y, 'dynamic')
@@ -134,10 +143,57 @@ function Bat:new(args)
 end
 
 function Bat.draw(bat)
-  for _, fix in ipairs(bat.body:getFixtures()) do
-    local shape = fix:getShape()
-    love.graphics.polygon("fill", bat.body:getWorldPoints(shape:getPoints()))
+  local scaleX, scaleY = getScale()
+  love.graphics.setCanvas(bat.canvasMain)
+  love.graphics.setShader()
+  love.graphics.clear(0, 0, 0, 0)
+  love.graphics.push()
+  love.graphics.scale(1 / scaleX, 1 / scaleY)
+
+  if bat.label == 'p1' then
+    love.graphics.setColor(0.2, 0.3, 1.0, 1.0)
+  elseif bat.label == 'p2' then
+    love.graphics.setColor(1.0, 0.2, 0.3, 1.0)
+  else
+    love.graphics.setColor(1.0, 0.0, 1.0, 1.0)
   end
+
+  for _, fix in ipairs(bat.body:getFixtures()) do
+    local points = { fix:getShape():getPoints() }
+    for ix, p in ipairs(points) do
+      if ix % 2 == 1 then
+        points[ix] = p + bat.canvasMain:getWidth() * 0.5
+      else
+        points[ix] = p + bat.canvasMain:getHeight() * 0.5
+      end
+    end
+    love.graphics.polygon("fill", points)
+  end
+
+  love.graphics.pop()
+  love.graphics.setCanvas()
+
+  love.graphics.setCanvas(bat.canvasGlow)
+  love.graphics.clear(0, 0, 0, 0)
+  love.graphics.push()
+  love.graphics.scale(1 / scaleX, 1 / scaleY)
+  love.graphics.setShader(shaders.glow)
+  love.graphics.setColor(1.0, 1.0, 1.0, 1.0)
+  love.graphics.draw(bat.canvasMain, 0, 0)
+  love.graphics.setShader()
+  love.graphics.pop()
+  love.graphics.setCanvas()
+
+  love.graphics.push()
+  love.graphics.translate(bat.body:getX(), bat.body:getY())
+  love.graphics.rotate(bat.body:getAngle())
+  love.graphics.translate(-bat.body:getX(), -bat.body:getY())
+  love.graphics.setColor(1.0, 1.0, 1.0, 1.0)
+  -- love.graphics.draw(bat.canvasMain, bat.body:getX() - bat.canvasMain:getWidth() * 0.5,
+  --   bat.body:getY() - bat.canvasMain:getHeight() * 0.5)
+  love.graphics.draw(bat.canvasGlow, bat.body:getX() - bat.canvasMain:getWidth() * 0.5,
+    bat.body:getY() - bat.canvasMain:getHeight() * 0.5)
+  love.graphics.pop()
 end
 
 function Bat.update(bat, dt)
@@ -293,13 +349,12 @@ local function fixBallVelocity(body)
 end
 
 function love.load()
-  love.graphics.setDefaultFilter('nearest')
-
   local font = love.graphics.newFont(56)
-  font:setFilter('nearest')
   love.graphics.setFont(font)
 
   shaders.ballLight = love.graphics.newShader("ballLight.glsl")
+  shaders.glow = love.graphics.newShader("glow.glsl")
+  shaders.glow2 = love.graphics.newShader("glow2.glsl")
 
   math.randomseed(os.time())
 
@@ -384,7 +439,9 @@ function love.update(dt)
   end
 
   bat1.body:setLinearVelocity(controls.p1.x * 200, controls.p1.y * batSpeed)
+  bat1.body:setAngle(bat1.body:getAngle() + controls.p1.r * dt * 1.5)
   bat2.body:setLinearVelocity(controls.p2.x * 200, controls.p2.y * batSpeed)
+  bat2.body:setAngle(bat2.body:getAngle() + controls.p2.r * dt * 1.5)
 
   bat1:update(dt)
   bat2:update(dt)
@@ -419,8 +476,8 @@ function love.update(dt)
 end
 
 function love.draw()
-  local winWidth, winHeight = love.graphics.getDimensions()
-  love.graphics.scale(winWidth / gameWidth, winHeight / gameHeight)
+  local scaleX, scaleY = getScale()
+  love.graphics.scale(scaleX, scaleY)
 
   love.graphics.push()
 
@@ -433,8 +490,7 @@ function love.draw()
 
   love.graphics.setColor(0.2, 1.0, 0.5, 1.0)
   love.graphics.setShader(shaders.ballLight)
-  shaders.ballLight:send("ballPosition",
-    { ball.body:getX() * (winWidth / gameWidth), ball.body:getY() * (winHeight / gameHeight) })
+  shaders.ballLight:send("ballPosition", { ball.body:getX() * scaleX, ball.body:getY() * scaleY })
   shaders.ballLight:send("ballRadius", ball.radius)
   love.graphics.rectangle('fill', 0, 0, gameWidth, gameHeight)
   love.graphics.setShader()
@@ -451,8 +507,12 @@ function love.keypressed(_key, scancode)
   local switch = {
     w = function() controls.p1.y = -1.0 end,
     s = function() controls.p1.y = 1.0 end,
+    a = function() controls.p1.r = 1.0 end,
+    d = function() controls.p1.r = -1.0 end,
     up = function() controls.p2.y = -1.0 end,
     down = function() controls.p2.y = 1.0 end,
+    left = function() controls.p2.r = 1.0 end,
+    right = function() controls.p2.r = -1.0 end,
     space = function() controls.confirm = true end,
     backspace = function() love.event.quit('restart') end, -- recreates the whole lua state from scratch.
     f1 = function() debug.debug() end,                     -- pause and enter debug terminal
@@ -469,8 +529,12 @@ function love.keyreleased(_key, scancode)
   local switch = {
     w = function() controls.p1.y = 0.0 end,
     s = function() controls.p1.y = 0.0 end,
+    a = function() controls.p1.r = 0.0 end,
+    d = function() controls.p1.r = 0.0 end,
     up = function() controls.p2.y = 0.0 end,
     down = function() controls.p2.y = 0.0 end,
+    left = function() controls.p2.r = 0.0 end,
+    right = function() controls.p2.r = 0.0 end,
   }
 
   local fn = switch[scancode]

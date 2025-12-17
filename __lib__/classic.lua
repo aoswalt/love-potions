@@ -73,7 +73,7 @@ return Object
 
 -- example
 
--- Rectangle = Object.extend(Object)
+-- Rectangle = Object:extend()
 --
 -- function Rectangle.new(self)
 --     self.x = 100
